@@ -1,4 +1,4 @@
-import { FrameDef, LayoutId, layoutSize } from "./data";
+import { FrameDef, LayoutId, layoutGeometry } from "./data";
 
 export interface PlacedSticker { id: number; emoji: string; x: number; y: number; size: number }
 export interface Adjust { brightness: number; contrast: number; saturation: number }
@@ -140,8 +140,8 @@ export async function renderFinal(opts: {
   watermark: boolean;
   previewOnly?: boolean;
 }): Promise<string> {
-  const count = opts.photos.length;
-  const size = layoutSize(opts.layout, count);
+  const usePhotos = opts.layout === "single" ? opts.photos.slice(0, 1) : opts.photos;
+  const size = layoutGeometry(opts.layout, usePhotos.length);
   const canvas = document.createElement("canvas");
   canvas.width = size.w;
   canvas.height = size.h;
@@ -152,29 +152,28 @@ export async function renderFinal(opts: {
   ctx.fillRect(0, 0, size.w, size.h);
   drawPattern(ctx, opts.frame, size.w, size.h);
 
-  const imgs = await Promise.all(opts.photos.map(loadImage));
-  const positions: { x: number; y: number }[] = [];
-  if (opts.layout === "grid" && count === 4) {
-    for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
-      positions.push({ x: size.pad + c * (size.cellW + size.gap), y: size.header + r * (size.cellH + size.gap) });
-    }
-  } else {
-    for (let i = 0; i < count; i++) {
-      positions.push({ x: size.pad, y: size.header + i * (size.cellH + size.gap) });
-    }
-  }
+  const imgs = await Promise.all(usePhotos.map(loadImage));
 
-  positions.forEach((p, i) => {
-    const cell = photoCanvas(imgs[i], size.cellW, size.cellH, opts.filterId, opts.adjust);
-    ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
-    ctx.fillStyle = "#fff"; ctx.fillRect(p.x, p.y, size.cellW, size.cellH);
-    ctx.restore();
+  size.cells.forEach((p, i) => {
+    if (p.card) {
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 20; ctx.shadowOffsetY = 8;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(p.card.x, p.card.y, p.card.w, p.card.h);
+      ctx.restore();
+    }
+    const cell = photoCanvas(imgs[i], p.w, p.h, opts.filterId, opts.adjust);
+    if (!p.card) {
+      ctx.save();
+      ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+      ctx.fillStyle = "#fff"; ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.restore();
+    }
     ctx.drawImage(cell, p.x, p.y);
     ctx.save();
     ctx.strokeStyle = opts.frame.accent;
     ctx.lineWidth = 10;
-    ctx.strokeRect(p.x + 5, p.y + 5, size.cellW - 10, size.cellH - 10);
+    ctx.strokeRect(p.x + 5, p.y + 5, p.w - 10, p.h - 10);
     ctx.restore();
   });
 
@@ -189,7 +188,7 @@ export async function renderFinal(opts: {
     ctx.fillText(s.emoji, s.x * size.w, s.y * size.h);
   }
 
-  const footerY = size.h - size.footer + 58;
+  const footerY = size.h - 52;
   ctx.fillStyle = opts.frame.ink;
   if (opts.caption.trim()) {
     ctx.font = "600 34px system-ui, sans-serif";

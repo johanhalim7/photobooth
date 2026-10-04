@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FILTERS, FRAMES, FrameDef, LayoutId, STICKERS } from "@/lib/data";
+import { FILTERS, FRAMES, FrameDef, LayoutId, LAYOUTS, STICKERS } from "@/lib/data";
 import { PlacedSticker, renderFinal } from "@/lib/render";
 import { clearSessions, deleteSession, listSessions, saveSession, SessionRecord } from "@/lib/sessionDb";
 
@@ -21,7 +21,7 @@ export default function BoothApp() {
   const [currentSlot, setCurrentSlot] = useState(0);
   const retakeRef = useRef<number | null>(null);
 
-  const [layout, setLayout] = useState<LayoutId>("strip");
+  const [layout, setLayout] = useState<LayoutId>("strip-v");
   const [frame, setFrame] = useState<FrameDef>(FRAMES[0]);
   const [filterId, setFilterId] = useState("original");
   const [adjust, setAdjust] = useState({ brightness: 0, contrast: 0, saturation: 0 });
@@ -128,9 +128,8 @@ export default function BoothApp() {
       retakeRef.current = null;
     } else {
       setPhotos(results);
-      if (results.length === 4) setLayout("strip");
-      else if (results.length === 1) setLayout("single");
-      else setLayout("strip");
+      if (results.length === 1) setLayout("single");
+      else setLayout("strip-v");
     }
     setStage("editor");
   };
@@ -142,7 +141,7 @@ export default function BoothApp() {
     );
     Promise.all(readers).then((imgs) => {
       setPhotos(imgs);
-      setLayout(imgs.length === 1 ? "single" : "strip");
+      setLayout(imgs.length === 1 ? "single" : "strip-v");
       setStage("editor");
     });
   };
@@ -339,10 +338,17 @@ export default function BoothApp() {
 
           <div className="mt-3 min-h-28 rounded-2xl bg-zinc-900 p-3">
             {tab === "Layout" && (
-              <div className="flex gap-2">
-                <button disabled={photos.length !== 1 && layout === "single"} onClick={() => setLayout("single")} className={`rounded-xl px-4 py-3 text-xs ${layout === "single" ? "bg-white text-zinc-950" : "bg-zinc-800"}`}>Single</button>
-                <button onClick={() => setLayout("strip")} className={`rounded-xl px-4 py-3 text-xs ${layout === "strip" ? "bg-white text-zinc-950" : "bg-zinc-800"}`}>Strip</button>
-                <button disabled={photos.length !== 4} onClick={() => setLayout("grid")} className={`rounded-xl px-4 py-3 text-xs ${layout === "grid" ? "bg-white text-zinc-950" : "bg-zinc-800"} disabled:opacity-40`}>Grid 2x2</button>
+              <div>
+                <div className="grid grid-cols-2 gap-2">
+                  {LAYOUTS.map((l) => (
+                    <button key={l.id} disabled={photos.length < l.minPhotos} onClick={() => { setLayout(l.id); setFinalUrl(""); }}
+                      className={`rounded-xl px-3 py-3 text-left disabled:opacity-40 ${layout === l.id ? "bg-white text-zinc-950" : "bg-zinc-800"}`}>
+                      <span className="block text-xs font-bold">{l.name}</span>
+                      <span className={`block text-[10px] ${layout === l.id ? "text-zinc-600" : "text-zinc-400"}`}>{l.desc}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[10px] text-zinc-500">Single memakai foto pertama. Layout lain memakai semua foto sesi ini.</p>
               </div>
             )}
             {tab === "Frame" && (

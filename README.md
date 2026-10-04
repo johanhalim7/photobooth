@@ -9,7 +9,7 @@ yang di-upload ke server. Hasil sesi tersimpan lokal di IndexedDB.
 
 - Kamera depan/belakang (`getUserMedia`), countdown 0/3/5/10 detik, flash, retake per slot
 - Fallback unggah foto dari galeri perangkat
-- Layout single, strip vertikal (1–4 foto), grid 2x2
+- Layout: Single, Strip Vertikal, Strip Horizontal, Grid fleksibel, Hero (1 besar + kecil), Polaroid
 - 10 frame, 8 filter + slider kecerahan/kontras/saturasi
 - 34 sticker (drag & resize di preview), caption footer, watermark opsional
 - Download PNG resolusi 2x, Web Share API (fallback download)
