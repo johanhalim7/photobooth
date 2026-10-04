@@ -340,7 +340,7 @@ export default function BoothApp() {
   };
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-zinc-950 text-zinc-50">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col bg-zinc-950 text-zinc-50 md:max-w-6xl md:px-4">
       <header className="flex items-center justify-between px-5 py-4">
         <button onClick={() => setStage("landing")} className="text-left">
           <p className="text-lg font-black tracking-tight">✦ PHOTOBOOTH</p>
@@ -353,16 +353,16 @@ export default function BoothApp() {
 
       {stage === "landing" && (
         <section className="flex flex-1 flex-col px-5 pb-8">
-          <h1 className="mt-4 text-4xl font-black leading-tight">Photobooth di browser kamu.</h1>
-          <p className="mt-3 text-sm leading-relaxed text-zinc-400">
+          <h1 className="mt-4 text-4xl font-black leading-tight md:mt-10 md:text-center md:text-6xl">Photobooth di browser kamu.</h1>
+          <p className="mt-3 text-sm leading-relaxed text-zinc-400 md:text-center md:text-base">
             Foto sepuasnya dulu, lalu pilih template layout dan isi slotnya pakai fotomu sendiri. Tanpa install, tanpa akun.
           </p>
-          <div className="mt-6 grid grid-cols-3 gap-2 text-center text-[11px]">
+          <div className="mt-6 grid grid-cols-3 gap-2 text-center text-[11px] md:mx-auto md:w-full md:max-w-lg md:text-xs">
             <div className="rounded-2xl bg-zinc-900 p-3">📸<br />Foto bebas sepuasnya</div>
             <div className="rounded-2xl bg-zinc-900 p-3">🧩<br />Template, isi sendiri</div>
             <div className="rounded-2xl bg-zinc-900 p-3">🔒<br />Foto tidak di-upload</div>
           </div>
-          <div className="mt-6 overflow-hidden rounded-3xl bg-gradient-to-br from-pink-500 via-amber-400 to-sky-500 p-4">
+          <div className="mt-6 overflow-hidden rounded-3xl bg-gradient-to-br from-pink-500 via-amber-400 to-sky-500 p-4 md:mx-auto md:w-full md:max-w-md">
             <div className="rounded-2xl bg-white p-2">
               <div className="grid grid-cols-2 gap-1 text-center text-4xl">
                 <span className="rounded bg-pink-100 py-5">🥳</span>
@@ -373,10 +373,10 @@ export default function BoothApp() {
               <p className="py-2 text-center text-xs font-bold text-zinc-800">✦ PHOTOBOOTH ✦</p>
             </div>
           </div>
-          <button onClick={startNew} className="mt-auto rounded-full bg-white py-4 text-base font-black text-zinc-950">
+          <button onClick={startNew} className="mt-auto rounded-full bg-white py-4 text-base font-black text-zinc-950 md:mx-auto md:w-full md:max-w-lg">
             Mulai Foto
           </button>
-          <button onClick={() => { setPhotos([]); setAssignments([]); setStage("camera"); fileRef.current?.click(); }} className="mt-3 rounded-full bg-zinc-800 py-3 text-sm font-bold">
+          <button onClick={() => { setPhotos([]); setAssignments([]); setStage("camera"); fileRef.current?.click(); }} className="mt-3 rounded-full bg-zinc-800 py-3 text-sm font-bold md:mx-auto md:w-full md:max-w-lg">
             Unggah Foto dari Galeri
           </button>
           <p className="mt-3 text-center text-[11px] text-zinc-500">Foto diproses di perangkatmu dan tidak dikirim ke server.</p>
@@ -385,7 +385,8 @@ export default function BoothApp() {
 
       {stage === "camera" && (
         <section className="flex flex-1 flex-col px-5 pb-6">
-          <div className="relative overflow-hidden rounded-3xl bg-zinc-900" style={{ aspectRatio: "4/5" }}>
+          <div className="md:flex md:items-start md:gap-6">
+          <div className="relative w-full shrink-0 overflow-hidden rounded-3xl bg-zinc-900 md:max-w-[520px]" style={{ aspectRatio: "4/5" }}>
             <video ref={videoRef} playsInline muted autoPlay onLoadedMetadata={(e) => { e.currentTarget.play().catch(() => {}); }} className="h-full w-full object-cover" style={{ transform: facing === "user" ? "scaleX(-1)" : undefined }} />
             {flash && <div className="absolute inset-0 bg-white" />}
             {displayCount !== null && (
@@ -395,8 +396,9 @@ export default function BoothApp() {
               {shooting ? `Foto ${shotNo} dari ${target}…` : `${photos.length}/${target} foto`}
             </p>
           </div>
+          <div className="min-w-0 flex-1">
           {camError && (
-            <div className="mt-3 rounded-xl bg-red-500/15 px-3 py-2 text-xs text-red-300">
+            <div className="mt-3 rounded-xl bg-red-500/15 px-3 py-2 text-xs text-red-300 md:mt-0">
               <p>{camError}</p>
               <button onClick={() => { setCamError(""); setCamRetry((n) => n + 1); }} className="mt-2 rounded-full bg-white px-3 py-1.5 font-bold text-zinc-950">
                 Nyalakan Ulang Kamera
@@ -405,7 +407,7 @@ export default function BoothApp() {
           )}
 
           {photos.length > 0 && (
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1 md:flex-wrap">
               {photos.map((p, i) => (
                 <div key={i} className="relative shrink-0">
                   <img src={p} alt={`Foto ${i + 1}`} className="h-20 w-16 rounded-lg object-cover" />
@@ -451,20 +453,22 @@ export default function BoothApp() {
           >
             {photos.length >= target ? `Target Tercapai · Pilih Template (${photos.length} foto)` : `Selesai Lebih Awal · Pilih Template (${photos.length} foto)`}
           </button>
-          <p className="mt-2 text-center text-[11px] text-zinc-500">Target tercapai = otomatis lanjut pilih template. Template & isinya tetap kamu pilih sendiri setelah ini.</p>
+          <p className="mt-2 text-center text-[11px] text-zinc-500 md:text-left">Target tercapai = otomatis lanjut pilih template. Template & isinya tetap kamu pilih sendiri setelah ini.</p>
+          </div>
+          </div>
         </section>
       )}
 
       {stage === "templates" && (
         <section className="flex flex-1 flex-col px-5 pb-8">
-          <h2 className="text-2xl font-black">Pilih template layout</h2>
+          <h2 className="text-2xl font-black md:text-3xl">Pilih template layout</h2>
           <p className="mt-1 text-xs leading-relaxed text-zinc-400">
             Ini cuma kerangka — slotnya masih kosong. Setelah pilih template, kamu isi sendiri tiap slot pakai {photos.length} fotomu.
           </p>
-          <div className="mt-4 grid grid-cols-3 gap-2">
+          <div className="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
             {TEMPLATES.map((t) => (
               <button key={t.id} onClick={() => chooseTemplate(t, true)} className="rounded-2xl bg-zinc-900 p-2 text-left">
-                <div className="flex h-20 items-center justify-center overflow-hidden rounded-xl bg-zinc-800 px-2">
+                <div className="flex h-20 items-center justify-center overflow-hidden rounded-xl bg-zinc-800 px-2 sm:h-24">
                   <div className="max-h-full w-full max-w-[72px]">
                     <TemplateDiagram t={t} />
                   </div>
@@ -480,7 +484,8 @@ export default function BoothApp() {
 
       {stage === "editor" && (
         <section className="flex flex-1 flex-col px-5 pb-6">
-          <div className="relative mx-auto w-full max-w-[340px] overflow-hidden rounded-2xl bg-white">
+          <div className="md:flex md:items-start md:gap-6">
+          <div className="relative mx-auto w-full max-w-[340px] shrink-0 overflow-hidden rounded-2xl bg-white md:sticky md:top-4 md:mx-0 md:max-h-[85vh] md:max-w-[420px] md:overflow-y-auto">
             {preview ? <img src={preview} alt="Hasil photobooth" className="w-full" /> : <div className="flex h-64 items-center justify-center text-zinc-500">Menyiapkan preview…</div>}
             <div className="absolute inset-0">
               {stickers.map((s) => (
@@ -492,7 +497,8 @@ export default function BoothApp() {
               ))}
             </div>
           </div>
-          <p className="mt-2 text-center text-[11px] text-zinc-500">
+          <div className="min-w-0 flex-1">
+          <p className="mt-2 text-center text-[11px] text-zinc-500 md:mt-0 md:text-left">
             Template: <b className="text-zinc-300">{template.name} · {template.slots} slot</b> — terisi {filledCount}/{assignments.length}
             {!complete && " · lengkapi di tab Foto"}
           </p>
@@ -628,6 +634,8 @@ export default function BoothApp() {
             <button onClick={doShare} className="rounded-full bg-zinc-800 py-3 text-xs font-bold">Share</button>
             <button onClick={doSaveSession} className="rounded-full bg-zinc-800 py-3 text-xs font-bold">Simpan Sesi</button>
           </div>
+          </div>
+          </div>
         </section>
       )}
 
@@ -638,7 +646,7 @@ export default function BoothApp() {
             {sessions.length > 0 && <button onClick={async () => { await clearSessions(); setSessions([]); }} className="text-xs text-red-300">Hapus Semua</button>}
           </div>
           {!sessions.length && <p className="mt-8 text-center text-sm text-zinc-500">Belum ada sesi tersimpan di perangkat ini.</p>}
-          <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
             {sessions.map((s) => (
               <div key={s.id} className="overflow-hidden rounded-2xl bg-zinc-900">
                 <img src={s.image} alt="Sesi tersimpan" className="w-full" />
