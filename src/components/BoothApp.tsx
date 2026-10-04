@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { FILTERS, FRAMES, FrameDef, LayoutId, LAYOUTS, STICKERS } from "@/lib/data";
+import { FILTERS, FRAMES, FrameDef, LayoutId, LAYOUTS, MAX_PHOTOS, STICKERS } from "@/lib/data";
 import { PlacedSticker, renderFinal } from "@/lib/render";
 import { clearSessions, deleteSession, listSessions, saveSession, SessionRecord } from "@/lib/sessionDb";
 
@@ -34,6 +34,7 @@ export default function BoothApp() {
   const [msg, setMsg] = useState("");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [tab, setTab] = useState<"Layout" | "Frame" | "Filter" | "Sticker" | "Teks">("Layout");
+  const [frameCat, setFrameCat] = useState<string>("Semua");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -136,7 +137,7 @@ export default function BoothApp() {
 
   const onUpload = (files: FileList | null) => {
     if (!files?.length) return;
-    const readers = Array.from(files).slice(0, 4).map(
+    const readers = Array.from(files).slice(0, MAX_PHOTOS).map(
       (f) => new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(f); })
     );
     Promise.all(readers).then((imgs) => {
@@ -285,7 +286,7 @@ export default function BoothApp() {
             <label className="rounded-2xl bg-zinc-900 p-3">
               Jumlah foto
               <select value={count} onChange={(e) => setCount(Number(e.target.value))} className="mt-2 w-full rounded-lg bg-zinc-800 px-2 py-2">
-                {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n} foto</option>)}
+                {Array.from({ length: MAX_PHOTOS }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n} foto</option>)}
               </select>
             </label>
             <label className="rounded-2xl bg-zinc-900 p-3">
@@ -352,12 +353,21 @@ export default function BoothApp() {
               </div>
             )}
             {tab === "Frame" && (
-              <div className="grid grid-cols-5 gap-2">
-                {FRAMES.map((f) => (
-                  <button key={f.id} onClick={() => { setFrame(f); setFinalUrl(""); }} className={`rounded-xl p-2 text-[10px] ${frame.id === f.id ? "ring-2 ring-white" : ""}`} style={{ background: f.bg, color: f.ink }}>
-                    🎞️<br />{f.name.split(" ")[0]}
-                  </button>
-                ))}
+              <div>
+                <div className="flex gap-1 overflow-x-auto pb-2">
+                  {["Semua", "Klasik", "Lucu", "Event", "Gradasi", "Elegan"].map((c) => (
+                    <button key={c} onClick={() => setFrameCat(c)} className={`shrink-0 rounded-full px-3 py-1 text-[11px] ${frameCat === c ? "bg-white text-zinc-950" : "bg-zinc-800"}`}>{c}</button>
+                  ))}
+                </div>
+                <div className="grid max-h-44 grid-cols-4 gap-2 overflow-y-auto pr-1">
+                  {FRAMES.filter((f) => frameCat === "Semua" || f.category === frameCat).map((f) => (
+                    <button key={f.id} onClick={() => { setFrame(f); setFinalUrl(""); }}
+                      className={`rounded-xl p-2 text-[10px] ${frame.id === f.id ? "ring-2 ring-white" : ""}`}
+                      style={{ background: f.gradient ? `linear-gradient(135deg, ${f.gradient[0]}, ${f.gradient[1]})` : f.bg, color: f.ink }}>
+                      🎞️<br />{f.name}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
             {tab === "Filter" && (

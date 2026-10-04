@@ -26,12 +26,28 @@ function drawPattern(ctx: CanvasRenderingContext2D, frame: FrameDef, w: number, 
     for (let x = -h; x < w; x += 36) {
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + h, h); ctx.stroke();
     }
-  } else if (frame.pattern === "stars" || frame.pattern === "confetti") {
-    const glyph = frame.pattern === "stars" ? "★" : "•";
-    ctx.font = "26px sans-serif";
-    let seed = 7;
-    const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
-    for (let i = 0; i < 70; i++) ctx.fillText(glyph, rand() * w, rand() * h);
+  } else if (frame.pattern === "waves") {
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = frame.accent;
+    for (let y = 16; y < h; y += 34) {
+      ctx.beginPath();
+      for (let x = 0; x <= w; x += 8) {
+        const yy = y + Math.sin(x / 46) * 7;
+        if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+      }
+      ctx.stroke();
+    }
+  } else {
+    const glyphs: Record<string, string> = {
+      stars: "★", confetti: "•", hearts: "♥", music: "♪", flowers: "✿", bolts: "⚡",
+    };
+    const glyph = glyphs[frame.pattern];
+    if (glyph) {
+      ctx.font = "26px sans-serif";
+      let seed = 7;
+      const rand = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+      for (let i = 0; i < 70; i++) ctx.fillText(glyph, rand() * w, rand() * h);
+    }
   }
   ctx.restore();
 }
@@ -148,7 +164,14 @@ export async function renderFinal(opts: {
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas tidak tersedia");
 
-  ctx.fillStyle = opts.frame.bg;
+  if (opts.frame.gradient) {
+    const grad = ctx.createLinearGradient(0, 0, size.w, size.h);
+    grad.addColorStop(0, opts.frame.gradient[0]);
+    grad.addColorStop(1, opts.frame.gradient[1]);
+    ctx.fillStyle = grad;
+  } else {
+    ctx.fillStyle = opts.frame.bg;
+  }
   ctx.fillRect(0, 0, size.w, size.h);
   drawPattern(ctx, opts.frame, size.w, size.h);
 

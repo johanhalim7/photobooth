@@ -7,10 +7,10 @@ yang di-upload ke server. Hasil sesi tersimpan lokal di IndexedDB.
 
 ## Fitur MVP
 
-- Kamera depan/belakang (`getUserMedia`), countdown 0/3/5/10 detik, flash, retake per slot
+- Kamera depan/belakang (`getUserMedia`), 1-8 foto per sesi, countdown 0/3/5/10 detik, flash, retake per slot
 - Fallback unggah foto dari galeri perangkat
-- Layout (default: Grid Kolase 2 kolom): Single, Strip Vertikal, Strip Horizontal, Grid Kolase, Grid 3 Kolom, Hero, Mozaik, Duo, Bulat, Tangga, Majalah, Film Strip, Polaroid
-- 10 frame, 8 filter + slider kecerahan/kontras/saturasi
+- Layout (default: Grid Kolase 2 kolom, 16 pilihan): Single, Strip Vertikal/Horizontal, Grid 2/3/4 Kolom, Hero, Hero Samping, Mozaik, Susun Bata, Duo, Bulat, Tangga, Majalah, Film Strip, Polaroid — semua menyesuaikan 1-8 foto
+- 24 frame (Klasik/Lucu/Event/Gradasi/Elegan, termasuk gradasi - 10 frame, 8 filter + slider kecerahan/kontras/saturasi pola baru), 8 filter + slider kecerahan/kontras/saturasi
 - 34 sticker (drag & resize di preview), caption footer, watermark opsional
 - Download PNG resolusi 2x, Web Share API (fallback download)
 - Galeri "Sesi Saya" lokal (IndexedDB): unduh ulang, hapus satu, hapus semua
