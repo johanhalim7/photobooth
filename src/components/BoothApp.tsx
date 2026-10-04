@@ -21,7 +21,7 @@ export default function BoothApp() {
   const [currentSlot, setCurrentSlot] = useState(0);
   const retakeRef = useRef<number | null>(null);
 
-  const [layout, setLayout] = useState<LayoutId>("strip-v");
+  const [layout, setLayout] = useState<LayoutId>("grid");
   const [frame, setFrame] = useState<FrameDef>(FRAMES[0]);
   const [filterId, setFilterId] = useState("original");
   const [adjust, setAdjust] = useState({ brightness: 0, contrast: 0, saturation: 0 });
@@ -129,7 +129,7 @@ export default function BoothApp() {
     } else {
       setPhotos(results);
       if (results.length === 1) setLayout("single");
-      else setLayout("strip-v");
+      else setLayout("grid");
     }
     setStage("editor");
   };
@@ -141,7 +141,7 @@ export default function BoothApp() {
     );
     Promise.all(readers).then((imgs) => {
       setPhotos(imgs);
-      setLayout(imgs.length === 1 ? "single" : "strip-v");
+      setLayout(imgs.length === 1 ? "single" : "grid");
       setStage("editor");
     });
   };

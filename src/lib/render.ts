@@ -154,6 +154,20 @@ export async function renderFinal(opts: {
 
   const imgs = await Promise.all(usePhotos.map(loadImage));
 
+  if (size.film) {
+    ctx.save();
+    ctx.fillStyle = "#111111";
+    const barX1 = 48 - 20, barX2 = size.w - 48 + 20 - 60;
+    ctx.fillRect(barX1, 72 - 12, 60, size.h - 72 - 110 + 24);
+    ctx.fillRect(barX2, 72 - 12, 60, size.h - 72 - 110 + 24);
+    ctx.fillStyle = "rgba(255,255,255,0.92)";
+    for (let y = 84; y < size.h - 130; y += 92) {
+      ctx.fillRect(barX1 + 12, y, 36, 54);
+      ctx.fillRect(barX2 + 12, y, 36, 54);
+    }
+    ctx.restore();
+  }
+
   size.cells.forEach((p, i) => {
     if (p.card) {
       ctx.save();
@@ -163,18 +177,34 @@ export async function renderFinal(opts: {
       ctx.restore();
     }
     const cell = photoCanvas(imgs[i], p.w, p.h, opts.filterId, opts.adjust);
-    if (!p.card) {
+    if (!p.card && !p.circle) {
       ctx.save();
       ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
       ctx.fillStyle = "#fff"; ctx.fillRect(p.x, p.y, p.w, p.h);
       ctx.restore();
     }
-    ctx.drawImage(cell, p.x, p.y);
-    ctx.save();
-    ctx.strokeStyle = opts.frame.accent;
-    ctx.lineWidth = 10;
-    ctx.strokeRect(p.x + 5, p.y + 5, p.w - 10, p.h - 10);
-    ctx.restore();
+    if (p.circle) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(p.x + p.w / 2, p.y + p.h / 2, p.w / 2, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(cell, p.x, p.y);
+      ctx.restore();
+      ctx.save();
+      ctx.strokeStyle = opts.frame.accent;
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.arc(p.x + p.w / 2, p.y + p.h / 2, p.w / 2 - 6, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    } else {
+      ctx.drawImage(cell, p.x, p.y);
+      ctx.save();
+      ctx.strokeStyle = opts.frame.accent;
+      ctx.lineWidth = 10;
+      ctx.strokeRect(p.x + 5, p.y + 5, p.w - 10, p.h - 10);
+      ctx.restore();
+    }
   });
 
   ctx.fillStyle = opts.frame.ink;
