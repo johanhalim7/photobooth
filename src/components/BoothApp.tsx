@@ -34,6 +34,7 @@ export default function BoothApp() {
   const [countdownSec, setCountdownSec] = useState(3);
   const [facing, setFacing] = useState<"user" | "environment">("user");
   const [camError, setCamError] = useState("");
+  const [camRetry, setCamRetry] = useState(0);
   const [displayCount, setDisplayCount] = useState<number | null>(null);
   const [flash, setFlash] = useState(false);
   const [shooting, setShooting] = useState(false);
@@ -78,31 +79,60 @@ export default function BoothApp() {
       return;
     }
     let cancelled = false;
+    let localStream: MediaStream | null = null;
     (async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: facing, width: { ideal: 1280 }, height: { ideal: 1600 } },
-          audio: false,
-        });
-        if (cancelled) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
+      // Beberapa Android gagal menyalakan kamera depan bila langsung diminta
+      // resolusi potret tinggi; coba bertahap dari yang paling spesifik.
+      const attempts: MediaStreamConstraints[] = [
+        { video: { facingMode: { ideal: facing }, width: { ideal: 720 }, height: { ideal: 960 } }, audio: false },
+        { video: { facingMode: { ideal: facing } }, audio: false },
+        { video: true, audio: false },
+      ];
+      let stream: MediaStream | null = null;
+      let lastErr: unknown = null;
+      for (const c of attempts) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(c);
+          break;
+        } catch (e) {
+          lastErr = e;
         }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-      } catch {
+      }
+      if (!stream) {
         if (!cancelled) {
-          setCamError("Kamera tidak bisa dibuka. Pastikan izin kamera diizinkan di browser, atau pakai tombol Unggah Foto di bawah.");
+          const denied = lastErr instanceof DOMException && lastErr.name === "NotAllowedError";
+          setCamError(
+            denied
+              ? "Izin kamera ditolak. Izinkan kamera untuk situs ini di pengaturan browser, lalu tap Nyalakan Ulang."
+              : "Kamera tidak bisa dibuka. Tap Nyalakan Ulang, atau pakai tombol Unggah Foto di bawah."
+          );
+        }
+        return;
+      }
+      localStream = stream;
+      if (cancelled) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      streamRef.current = stream;
+      setCamError("");
+      const v = videoRef.current;
+      if (v) {
+        v.srcObject = stream;
+        try {
+          await v.play();
+        } catch {
+          // Sebagian Android menolak play() pertama; metadata-loaded akan memicu ulang.
         }
       }
     })();
     return () => {
       cancelled = true;
+      // Matikan stream milik effect ini agar kamera tidak terkunci saat ganti arah.
+      localStream?.getTracks().forEach((t) => t.stop());
+      if (streamRef.current === localStream) streamRef.current = null;
     };
-  }, [stage, facing, stopCamera]);
+  }, [stage, facing, stopCamera, camRetry]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
@@ -336,7 +366,7 @@ export default function BoothApp() {
       {stage === "camera" && (
         <section className="flex flex-1 flex-col px-5 pb-6">
           <div className="relative overflow-hidden rounded-3xl bg-zinc-900" style={{ aspectRatio: "4/5" }}>
-            <video ref={videoRef} playsInline muted className="h-full w-full object-cover" style={{ transform: facing === "user" ? "scaleX(-1)" : undefined }} />
+            <video ref={videoRef} playsInline muted autoPlay onLoadedMetadata={(e) => { e.currentTarget.play().catch(() => {}); }} className="h-full w-full object-cover" style={{ transform: facing === "user" ? "scaleX(-1)" : undefined }} />
             {flash && <div className="absolute inset-0 bg-white" />}
             {displayCount !== null && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-8xl font-black">{displayCount}</div>
@@ -345,7 +375,14 @@ export default function BoothApp() {
               {shooting ? "Memotret…" : `${photos.length} foto terkumpul`}
             </p>
           </div>
-          {camError && <p className="mt-3 rounded-xl bg-red-500/15 px-3 py-2 text-xs text-red-300">{camError}</p>}
+          {camError && (
+            <div className="mt-3 rounded-xl bg-red-500/15 px-3 py-2 text-xs text-red-300">
+              <p>{camError}</p>
+              <button onClick={() => { setCamError(""); setCamRetry((n) => n + 1); }} className="mt-2 rounded-full bg-white px-3 py-1.5 font-bold text-zinc-950">
+                Nyalakan Ulang Kamera
+              </button>
+            </div>
+          )}
 
           {photos.length > 0 && (
             <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
