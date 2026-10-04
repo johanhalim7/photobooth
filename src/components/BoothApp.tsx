@@ -1,27 +1,46 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { FILTERS, FRAMES, FrameDef, LayoutId, LAYOUTS, MAX_PHOTOS, STICKERS } from "@/lib/data";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FILTERS, FRAMES, FrameDef, LayoutTemplate, MAX_POOL, STICKERS, TEMPLATES, layoutGeometry } from "@/lib/data";
 import { PlacedSticker, renderFinal } from "@/lib/render";
 import { clearSessions, deleteSession, listSessions, saveSession, SessionRecord } from "@/lib/sessionDb";
 
-type Stage = "landing" | "camera" | "editor" | "gallery";
+type Stage = "landing" | "camera" | "templates" | "editor" | "gallery";
+type Tab = "Foto" | "Template" | "Frame" | "Filter" | "Stiker" | "Teks";
 
+function TemplateDiagram({ t, dark = false }: { t: LayoutTemplate; dark?: boolean }) {
+  const geo = layoutGeometry(t.layout, t.slots);
+  return (
+    <div className="relative w-full" style={{ aspectRatio: `${geo.w} / ${geo.h}` }}>
+      {geo.cells.map((c, i) => (
+        <div
+          key={i}
+          className={`absolute ${dark ? "bg-zinc-500" : "bg-zinc-400"} ${c.circle ? "rounded-full" : "rounded-[2px]"}`}
+          style={{
+            left: `${(c.x / geo.w) * 100}%`,
+            top: `${(c.y / geo.h) * 100}%`,
+            width: `${(c.w / geo.w) * 100}%`,
+            height: `${(c.h / geo.h) * 100}%`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function BoothApp() {
   const [stage, setStage] = useState<Stage>("landing");
   const [photos, setPhotos] = useState<string[]>([]);
-  const [count, setCount] = useState(4);
   const [countdownSec, setCountdownSec] = useState(3);
   const [facing, setFacing] = useState<"user" | "environment">("user");
   const [camError, setCamError] = useState("");
   const [displayCount, setDisplayCount] = useState<number | null>(null);
   const [flash, setFlash] = useState(false);
-  const [capturing, setCapturing] = useState(false);
-  const [currentSlot, setCurrentSlot] = useState(0);
-  const retakeRef = useRef<number | null>(null);
+  const [shooting, setShooting] = useState(false);
 
-  const [layout, setLayout] = useState<LayoutId>("grid");
+  const [template, setTemplate] = useState<LayoutTemplate>(TEMPLATES.find((t) => t.id === "grid-4") ?? TEMPLATES[0]);
+  const [assignments, setAssignments] = useState<(number | null)[]>([]);
+  const [selectedSlot, setSelectedSlot] = useState(0);
   const [frame, setFrame] = useState<FrameDef>(FRAMES[0]);
   const [filterId, setFilterId] = useState("original");
   const [adjust, setAdjust] = useState({ brightness: 0, contrast: 0, saturation: 0 });
@@ -33,13 +52,20 @@ export default function BoothApp() {
   const [finalUrl, setFinalUrl] = useState("");
   const [msg, setMsg] = useState("");
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [tab, setTab] = useState<"Layout" | "Frame" | "Filter" | "Sticker" | "Teks">("Layout");
+  const [tab, setTab] = useState<Tab>("Foto");
   const [frameCat, setFrameCat] = useState<string>("Semua");
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const stickerId = useRef(1);
+
+  const slotPhotos = useMemo(
+    () => assignments.map((a) => (a === null ? null : photos[a] ?? null)),
+    [assignments, photos]
+  );
+  const filledCount = assignments.filter((a) => a !== null).length;
+  const complete = assignments.length > 0 && filledCount === assignments.length;
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -107,62 +133,95 @@ export default function BoothApp() {
     return c.toDataURL("image/jpeg", 0.92);
   };
 
-  const doCapture = async () => {
-    if (capturing) return;
-    setCapturing(true);
-    const retake = retakeRef.current;
-    const shots = retake !== null ? 1 : count;
-    const results: string[] = [];
-    for (let i = 0; i < shots; i++) {
-      setCurrentSlot(retake !== null ? retake : i);
-      await waitCountdown(countdownSec);
-      setFlash(true);
-      setTimeout(() => setFlash(false), 180);
-      const shot = snap();
-      if (shot) results.push(shot);
-      if (i < shots - 1) await new Promise((r) => setTimeout(r, 400));
-    }
-    setCapturing(false);
-    if (!results.length) { setMsg("Gagal mengambil foto, coba lagi ya."); return; }
-    if (retake !== null) {
-      setPhotos((prev) => prev.map((p, idx) => (idx === retake ? results[0] : p)));
-      retakeRef.current = null;
-    } else {
-      setPhotos(results);
-      if (results.length === 1) setLayout("single");
-      else setLayout("grid");
-    }
-    setStage("editor");
+  const doShoot = async () => {
+    if (shooting) return;
+    if (photos.length >= MAX_POOL) { setMsg(`Koleksi foto sudah penuh (maks ${MAX_POOL}). Hapus sebagian dulu ya.`); return; }
+    setShooting(true);
+    await waitCountdown(countdownSec);
+    setFlash(true);
+    setTimeout(() => setFlash(false), 180);
+    const shot = snap();
+    setShooting(false);
+    if (!shot) { setMsg("Gagal mengambil foto, coba lagi ya."); return; }
+    setPhotos((prev) => [...prev, shot]);
+    setMsg("");
+  };
+
+  const deletePhoto = (idx: number) => {
+    setPhotos((prev) => prev.filter((_, i) => i !== idx));
+    setAssignments((prev) => prev.map((a) => (a === null || a === idx ? null : a > idx ? a - 1 : a)));
   };
 
   const onUpload = (files: FileList | null) => {
     if (!files?.length) return;
-    const readers = Array.from(files).slice(0, MAX_PHOTOS).map(
+    const room = MAX_POOL - photos.length;
+    const readers = Array.from(files).slice(0, Math.max(0, room)).map(
       (f) => new Promise<string>((res) => { const r = new FileReader(); r.onload = () => res(String(r.result)); r.readAsDataURL(f); })
     );
     Promise.all(readers).then((imgs) => {
-      setPhotos(imgs);
-      setLayout(imgs.length === 1 ? "single" : "grid");
-      setStage("editor");
+      if (imgs.length) setPhotos((prev) => [...prev, ...imgs]);
     });
   };
 
+  const startNew = () => {
+    setPhotos([]);
+    setAssignments([]);
+    setStickers([]);
+    setCaption("");
+    setFinalUrl("");
+    setPreview("");
+    setMsg("");
+    setStage("camera");
+  };
+
+  const chooseTemplate = (t: LayoutTemplate, fresh: boolean) => {
+    setTemplate(t);
+    setAssignments((prev) => {
+      const next: (number | null)[] = Array.from({ length: t.slots }, () => null);
+      if (!fresh) for (let i = 0; i < Math.min(prev.length, t.slots); i++) next[i] = prev[i];
+      return next;
+    });
+    setSelectedSlot(0);
+    setFinalUrl("");
+    if (fresh) {
+      setTab("Foto");
+      setStage("editor");
+    }
+  };
+
+  const assignPhoto = (photoIdx: number) => {
+    setAssignments((prev) => {
+      const next = [...prev];
+      next[selectedSlot] = photoIdx;
+      const nextEmpty = next.findIndex((a, i) => a === null && i > selectedSlot);
+      const anyEmpty = next.findIndex((a) => a === null);
+      setSelectedSlot(nextEmpty >= 0 ? nextEmpty : anyEmpty >= 0 ? anyEmpty : selectedSlot);
+      return next;
+    });
+    setFinalUrl("");
+  };
+
   const buildFinal = useCallback(async (withStickers: boolean, previewOnly = false) => {
-    if (!photos.length) return "";
+    if (!assignments.length) return "";
     return renderFinal({
-      photos, layout, frame, filterId, adjust,
+      photos: slotPhotos, layout: template.layout, frame, filterId, adjust,
       stickers: withStickers ? stickers : [],
       caption, watermark, previewOnly,
     });
-  }, [photos, layout, frame, filterId, adjust, stickers, caption, watermark]);
+  }, [assignments.length, slotPhotos, template.layout, frame, filterId, adjust, stickers, caption, watermark]);
 
   useEffect(() => {
-    if (stage !== "editor" || !photos.length) return;
+    if (stage !== "editor" || !assignments.length) return;
     const t = setTimeout(() => { buildFinal(false, true).then(setPreview).catch(() => {}); }, 250);
     return () => clearTimeout(t);
-  }, [stage, buildFinal, photos.length]);
+  }, [stage, buildFinal, assignments.length]);
 
   const prepareFinal = async () => {
+    if (!complete) {
+      setMsg(`Masih ada ${assignments.length - filledCount} slot kosong. Isi dulu lewat tab Foto ya.`);
+      setTab("Foto");
+      return "";
+    }
     const url = await buildFinal(true);
     setFinalUrl(url);
     return url;
@@ -170,6 +229,7 @@ export default function BoothApp() {
 
   const doDownload = async () => {
     const url = finalUrl || (await prepareFinal());
+    if (!url) return;
     const a = document.createElement("a");
     const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
     a.href = url;
@@ -180,6 +240,7 @@ export default function BoothApp() {
 
   const doShare = async () => {
     const url = finalUrl || (await prepareFinal());
+    if (!url) return;
     try {
       const blob = await (await fetch(url)).blob();
       const file = new File([blob], "photobooth.png", { type: "image/png" });
@@ -197,7 +258,8 @@ export default function BoothApp() {
 
   const doSaveSession = async () => {
     const url = finalUrl || (await prepareFinal());
-    await saveSession({ id: `${Date.now()}`, createdAt: Date.now(), image: url, layout });
+    if (!url) return;
+    await saveSession({ id: `${Date.now()}`, createdAt: Date.now(), image: url, layout: template.layout });
     setMsg("Tersimpan di Sesi Saya (lokal di perangkat ini).");
   };
 
@@ -243,11 +305,11 @@ export default function BoothApp() {
         <section className="flex flex-1 flex-col px-5 pb-8">
           <h1 className="mt-4 text-4xl font-black leading-tight">Photobooth di browser kamu.</h1>
           <p className="mt-3 text-sm leading-relaxed text-zinc-400">
-            Selfie pakai kamera HP/laptop, pilih frame & filter, lalu download PNG-nya. Tanpa install, tanpa akun.
+            Foto sepuasnya dulu, lalu pilih template layout dan isi slotnya pakai fotomu sendiri. Tanpa install, tanpa akun.
           </p>
           <div className="mt-6 grid grid-cols-3 gap-2 text-center text-[11px]">
-            <div className="rounded-2xl bg-zinc-900 p-3">📸<br />Countdown & retake</div>
-            <div className="rounded-2xl bg-zinc-900 p-3">🎞️<br />Strip / grid estetik</div>
+            <div className="rounded-2xl bg-zinc-900 p-3">📸<br />Foto bebas sepuasnya</div>
+            <div className="rounded-2xl bg-zinc-900 p-3">🧩<br />Template, isi sendiri</div>
             <div className="rounded-2xl bg-zinc-900 p-3">🔒<br />Foto tidak di-upload</div>
           </div>
           <div className="mt-6 overflow-hidden rounded-3xl bg-gradient-to-br from-pink-500 via-amber-400 to-sky-500 p-4">
@@ -261,8 +323,11 @@ export default function BoothApp() {
               <p className="py-2 text-center text-xs font-bold text-zinc-800">✦ PHOTOBOOTH ✦</p>
             </div>
           </div>
-          <button onClick={() => setStage("camera")} className="mt-auto rounded-full bg-white py-4 text-base font-black text-zinc-950">
+          <button onClick={startNew} className="mt-auto rounded-full bg-white py-4 text-base font-black text-zinc-950">
             Mulai Foto
+          </button>
+          <button onClick={() => { setPhotos([]); setAssignments([]); setStage("camera"); fileRef.current?.click(); }} className="mt-3 rounded-full bg-zinc-800 py-3 text-sm font-bold">
+            Unggah Foto dari Galeri
           </button>
           <p className="mt-3 text-center text-[11px] text-zinc-500">Foto diproses di perangkatmu dan tidak dikirim ke server.</p>
         </section>
@@ -277,32 +342,74 @@ export default function BoothApp() {
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-8xl font-black">{displayCount}</div>
             )}
             <p className="absolute left-3 top-3 rounded-full bg-black/50 px-3 py-1 text-[11px]">
-              {capturing ? `Foto ${currentSlot + 1}…` : "Siap-siap ya"}
+              {shooting ? "Memotret…" : `${photos.length} foto terkumpul`}
             </p>
           </div>
           {camError && <p className="mt-3 rounded-xl bg-red-500/15 px-3 py-2 text-xs text-red-300">{camError}</p>}
 
-          <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
-            <label className="rounded-2xl bg-zinc-900 p-3">
-              Jumlah foto
-              <select value={count} onChange={(e) => setCount(Number(e.target.value))} className="mt-2 w-full rounded-lg bg-zinc-800 px-2 py-2">
-                {Array.from({ length: MAX_PHOTOS }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n} foto</option>)}
-              </select>
-            </label>
+          {photos.length > 0 && (
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+              {photos.map((p, i) => (
+                <div key={i} className="relative shrink-0">
+                  <img src={p} alt={`Foto ${i + 1}`} className="h-20 w-16 rounded-lg object-cover" />
+                  <button onClick={() => deletePhoto(i)} className="absolute right-0.5 top-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10px]">✕</button>
+                  <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 text-[9px]">{i + 1}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
             <label className="rounded-2xl bg-zinc-900 p-3">
               Countdown
               <select value={countdownSec} onChange={(e) => setCountdownSec(Number(e.target.value))} className="mt-2 w-full rounded-lg bg-zinc-800 px-2 py-2">
                 {[0, 3, 5, 10].map((n) => <option key={n} value={n}>{n} detik</option>)}
               </select>
             </label>
+            <div className="rounded-2xl bg-zinc-900 p-3">
+              Kamera
+              <button onClick={() => setFacing(facing === "user" ? "environment" : "user")} className="mt-2 w-full rounded-lg bg-zinc-800 px-2 py-2">
+                {facing === "user" ? "Depan 🤳" : "Belakang 📷"} · Ganti
+              </button>
+            </div>
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <button onClick={() => fileRef.current?.click()} className="rounded-full bg-zinc-800 px-4 py-3 text-xs font-semibold">Unggah Foto</button>
-            <button onClick={doCapture} disabled={capturing} className="h-16 w-16 rounded-full border-4 border-white bg-red-500 disabled:opacity-50" aria-label="Ambil foto" />
-            <button onClick={() => setFacing(facing === "user" ? "environment" : "user")} className="rounded-full bg-zinc-800 px-4 py-3 text-xs font-semibold">Ganti Kamera</button>
+            <button onClick={doShoot} disabled={shooting} className="h-16 w-16 rounded-full border-4 border-white bg-red-500 disabled:opacity-50" aria-label="Ambil foto" />
+            <span className="w-[92px] text-right text-[11px] text-zinc-500">Tap tombol merah tiap foto</span>
           </div>
-          <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => onUpload(e.target.files)} />
+
+          <button
+            onClick={() => { if (photos.length) { setMsg(""); setStage("templates"); } else setMsg("Foto dulu minimal 1 ya."); }}
+            className="mt-5 rounded-full bg-white py-4 text-sm font-black text-zinc-950 disabled:opacity-40"
+          >
+            Selesai Foto · Pilih Template ({photos.length} foto)
+          </button>
+          <p className="mt-2 text-center text-[11px] text-zinc-500">Foto sepuasnya dulu — template & isinya dipilih setelah ini.</p>
+        </section>
+      )}
+
+      {stage === "templates" && (
+        <section className="flex flex-1 flex-col px-5 pb-8">
+          <h2 className="text-2xl font-black">Pilih template layout</h2>
+          <p className="mt-1 text-xs leading-relaxed text-zinc-400">
+            Ini cuma kerangka — slotnya masih kosong. Setelah pilih template, kamu isi sendiri tiap slot pakai {photos.length} fotomu.
+          </p>
+          <div className="mt-4 grid grid-cols-3 gap-2">
+            {TEMPLATES.map((t) => (
+              <button key={t.id} onClick={() => chooseTemplate(t, true)} className="rounded-2xl bg-zinc-900 p-2 text-left">
+                <div className="flex h-20 items-center justify-center overflow-hidden rounded-xl bg-zinc-800 px-2">
+                  <div className="max-h-full w-full max-w-[72px]">
+                    <TemplateDiagram t={t} />
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] font-bold leading-tight">{t.name}</p>
+                <p className="text-[10px] text-zinc-500">{t.slots} slot · {t.desc}</p>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => setStage("camera")} className="mt-5 rounded-full bg-zinc-800 py-3 text-sm font-bold">← Foto Lagi</button>
         </section>
       )}
 
@@ -320,36 +427,73 @@ export default function BoothApp() {
               ))}
             </div>
           </div>
+          <p className="mt-2 text-center text-[11px] text-zinc-500">
+            Template: <b className="text-zinc-300">{template.name} · {template.slots} slot</b> — terisi {filledCount}/{assignments.length}
+            {!complete && " · lengkapi di tab Foto"}
+          </p>
 
-          <div className="mt-3 flex gap-2 overflow-x-auto">
-            {photos.map((p, i) => (
-              <button key={i} onClick={() => { retakeRef.current = i; setStage("camera"); }} className="relative shrink-0">
-                <img src={p} alt={`Foto ${i + 1}`} className="h-16 w-14 rounded-lg object-cover" />
-                <span className="absolute inset-x-0 bottom-0 bg-black/60 text-[10px]">Retake</span>
-              </button>
-            ))}
-            <button onClick={() => { retakeRef.current = null; setStage("camera"); }} className="flex h-16 w-14 shrink-0 items-center justify-center rounded-lg bg-zinc-800 text-[10px]">Ulang Semua</button>
-          </div>
-
-          <div className="mt-4 flex gap-1 rounded-full bg-zinc-900 p-1 text-[11px] font-semibold">
-            {(["Layout", "Frame", "Filter", "Sticker", "Teks"] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={`flex-1 rounded-full py-2 ${tab === t ? "bg-white text-zinc-950" : "text-zinc-300"}`}>{t}</button>
+          <div className="mt-3 flex gap-1 overflow-x-auto rounded-full bg-zinc-900 p-1 text-[11px] font-semibold">
+            {(["Foto", "Template", "Frame", "Filter", "Stiker", "Teks"] as Tab[]).map((t) => (
+              <button key={t} onClick={() => setTab(t)} className={`flex-1 shrink-0 rounded-full px-2 py-2 ${tab === t ? "bg-white text-zinc-950" : "text-zinc-300"}`}>{t}</button>
             ))}
           </div>
 
           <div className="mt-3 min-h-28 rounded-2xl bg-zinc-900 p-3">
-            {tab === "Layout" && (
+            {tab === "Foto" && (
               <div>
-                <div className="grid grid-cols-2 gap-2">
-                  {LAYOUTS.map((l) => (
-                    <button key={l.id} disabled={photos.length < l.minPhotos} onClick={() => { setLayout(l.id); setFinalUrl(""); }}
-                      className={`rounded-xl px-3 py-3 text-left disabled:opacity-40 ${layout === l.id ? "bg-white text-zinc-950" : "bg-zinc-800"}`}>
-                      <span className="block text-xs font-bold">{l.name}</span>
-                      <span className={`block text-[10px] ${layout === l.id ? "text-zinc-600" : "text-zinc-400"}`}>{l.desc}</span>
+                <div className="flex gap-2 overflow-x-auto pb-2">
+                  {assignments.map((a, i) => (
+                    <button key={i} onClick={() => setSelectedSlot(i)}
+                      className={`relative h-16 w-14 shrink-0 overflow-hidden rounded-lg ${selectedSlot === i ? "ring-2 ring-sky-400" : "ring-1 ring-zinc-700"}`}>
+                      {a !== null && photos[a] ? (
+                        <img src={photos[a]} alt={`Slot ${i + 1}`} className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="flex h-full w-full flex-col items-center justify-center bg-zinc-800 text-[10px] text-zinc-400">Slot {i + 1}<span className="text-base">＋</span></span>
+                      )}
+                      {a !== null && (
+                        <span
+                          role="button"
+                          aria-label={`Kosongkan slot ${i + 1}`}
+                          onClick={(e) => { e.stopPropagation(); setAssignments((prev) => prev.map((v, j) => (j === i ? null : v))); setFinalUrl(""); }}
+                          className="absolute right-0.5 top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-black/70 text-[9px]"
+                        >✕</span>
+                      )}
                     </button>
                   ))}
                 </div>
-                <p className="mt-2 text-[10px] text-zinc-500">Single memakai foto pertama. Layout lain memakai semua foto sesi ini.</p>
+                <p className="text-[11px] text-zinc-400">Pilih slot di atas, lalu ketuk foto untuk mengisinya. Foto boleh dipakai ulang di slot lain.</p>
+                <div className="mt-2 grid grid-cols-4 gap-2">
+                  {photos.map((p, i) => (
+                    <button key={i} onClick={() => assignPhoto(i)} className="relative overflow-hidden rounded-lg ring-1 ring-zinc-700">
+                      <img src={p} alt={`Foto ${i + 1}`} className="h-16 w-full object-cover" />
+                      <span className="absolute bottom-0.5 left-0.5 rounded bg-black/60 px-1 text-[9px]">{i + 1}</span>
+                      {assignments.includes(i) && <span className="absolute right-0.5 top-0.5 rounded bg-emerald-500 px-1 text-[9px] font-bold">terpakai</span>}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={() => setStage("camera")} className="flex-1 rounded-full bg-zinc-800 py-2.5 text-[11px] font-bold">📸 Tambah Foto</button>
+                  <button onClick={() => fileRef.current?.click()} className="flex-1 rounded-full bg-zinc-800 py-2.5 text-[11px] font-bold">🖼️ Unggah Foto</button>
+                </div>
+              </div>
+            )}
+            {tab === "Template" && (
+              <div>
+                <div className="grid max-h-72 grid-cols-3 gap-2 overflow-y-auto pr-1">
+                  {TEMPLATES.map((t) => (
+                    <button key={t.id} onClick={() => chooseTemplate(t, false)}
+                      className={`rounded-xl p-2 text-left ${template.id === t.id ? "bg-white text-zinc-950" : "bg-zinc-800"}`}>
+                      <div className="flex h-14 items-center justify-center overflow-hidden rounded-lg bg-zinc-700/40 px-1.5">
+                        <div className="max-h-full w-full max-w-[54px]">
+                          <TemplateDiagram t={t} dark={template.id === t.id} />
+                        </div>
+                      </div>
+                      <p className="mt-1.5 text-[10px] font-bold leading-tight">{t.name}</p>
+                      <p className={`text-[9px] ${template.id === t.id ? "text-zinc-600" : "text-zinc-500"}`}>{t.slots} slot</p>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-[10px] text-zinc-500">Ganti template tidak menghapus foto yang sudah kamu pasang (selama slotnya masih ada).</p>
               </div>
             )}
             {tab === "Frame" && (
@@ -385,7 +529,7 @@ export default function BoothApp() {
                 ))}
               </div>
             )}
-            {tab === "Sticker" && (
+            {tab === "Stiker" && (
               <div>
                 <div className="grid grid-cols-8 gap-1 text-xl">
                   {STICKERS.map((e) => (
@@ -400,7 +544,7 @@ export default function BoothApp() {
                     <button onClick={() => { setStickers((p) => p.filter((s) => s.id !== selectedSticker)); setSelectedSticker(null); setFinalUrl(""); }} className="rounded bg-red-500/20 px-2 py-1 text-red-300">Hapus</button>
                   </div>
                 )}
-                <p className="mt-2 text-[10px] text-zinc-500">Geser sticker langsung di preview.</p>
+                <p className="mt-2 text-[10px] text-zinc-500">Geser stiker langsung di preview.</p>
               </div>
             )}
             {tab === "Teks" && (
@@ -415,7 +559,7 @@ export default function BoothApp() {
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-2">
-            <button onClick={doDownload} className="rounded-full bg-white py-3 text-xs font-black text-zinc-950">Download PNG</button>
+            <button onClick={doDownload} className={`rounded-full py-3 text-xs font-black ${complete ? "bg-white text-zinc-950" : "bg-zinc-700 text-zinc-400"}`}>Download PNG</button>
             <button onClick={doShare} className="rounded-full bg-zinc-800 py-3 text-xs font-bold">Share</button>
             <button onClick={doSaveSession} className="rounded-full bg-zinc-800 py-3 text-xs font-bold">Simpan Sesi</button>
           </div>
@@ -440,9 +584,11 @@ export default function BoothApp() {
               </div>
             ))}
           </div>
-          <button onClick={() => setStage(photos.length ? "editor" : "landing")} className="mt-6 rounded-full bg-zinc-800 py-3 text-sm font-bold">Kembali</button>
+          <button onClick={() => setStage(assignments.length ? "editor" : "landing")} className="mt-6 rounded-full bg-zinc-800 py-3 text-sm font-bold">Kembali</button>
         </section>
       )}
+
+      <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(e) => { onUpload(e.target.files); e.target.value = ""; }} />
     </main>
   );
 }

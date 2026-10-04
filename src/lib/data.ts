@@ -272,4 +272,45 @@ export function layoutGeometry(layout: LayoutId, count: number): { w: number; h:
   return { w: pad * 2 + cw, h: header + ch * n + gap * (n - 1) + footer + pad, cells };
 }
 
-export const MAX_PHOTOS = 8;
+export const MAX_POOL = 24;
+
+export interface LayoutTemplate {
+  id: string;
+  layout: LayoutId;
+  name: string;
+  slots: number;
+  desc: string;
+}
+
+export const TEMPLATES: LayoutTemplate[] = [
+  { id: "single-1", layout: "single", name: "Single", slots: 1, desc: "1 foto besar" },
+  { id: "duo-2", layout: "duo", name: "Duo", slots: 2, desc: "2 kolom tinggi" },
+  { id: "stripv-3", layout: "strip-v", name: "Strip Vertikal", slots: 3, desc: "3 foto ke bawah" },
+  { id: "stripv-4", layout: "strip-v", name: "Strip Vertikal", slots: 4, desc: "4 foto ke bawah" },
+  { id: "striph-3", layout: "strip-h", name: "Strip Horizontal", slots: 3, desc: "3 foto ke samping" },
+  { id: "striph-4", layout: "strip-h", name: "Strip Horizontal", slots: 4, desc: "4 foto ke samping" },
+  { id: "grid-4", layout: "grid", name: "Grid Kolase", slots: 4, desc: "2 x 2 klasik" },
+  { id: "grid-6", layout: "grid", name: "Grid Kolase", slots: 6, desc: "2 kolom, 6 foto" },
+  { id: "grid-8", layout: "grid", name: "Grid Kolase", slots: 8, desc: "2 kolom, 8 foto" },
+  { id: "grid3-3", layout: "grid3", name: "Trio Baris", slots: 3, desc: "3 foto sebaris" },
+  { id: "grid3-6", layout: "grid3", name: "Grid 3 Kolom", slots: 6, desc: "3 kolom rapat" },
+  { id: "grid4-8", layout: "grid4", name: "Grid 4 Kolom", slots: 8, desc: "kolase padat 8 foto" },
+  { id: "hero-4", layout: "hero", name: "Hero", slots: 4, desc: "1 besar + 3 kecil" },
+  { id: "hero-7", layout: "hero", name: "Hero", slots: 7, desc: "1 besar + 6 kecil" },
+  { id: "poster-4", layout: "poster", name: "Hero Samping", slots: 4, desc: "utama kiri + 3 kanan" },
+  { id: "poster-7", layout: "poster", name: "Hero Samping", slots: 7, desc: "utama kiri + 6 kanan" },
+  { id: "mosaic-4", layout: "mosaic", name: "Mozaik", slots: 4, desc: "besar-kecil berselang" },
+  { id: "mosaic-6", layout: "mosaic", name: "Mozaik", slots: 6, desc: "pola bata 6 foto" },
+  { id: "brick-4", layout: "brick", name: "Susun Bata", slots: 4, desc: "baris bergeser" },
+  { id: "brick-6", layout: "brick", name: "Susun Bata", slots: 6, desc: "bata 6 foto" },
+  { id: "circles-4", layout: "circles", name: "Bulat", slots: 4, desc: "4 lingkaran" },
+  { id: "circles-6", layout: "circles", name: "Bulat", slots: 6, desc: "6 lingkaran" },
+  { id: "stairs-3", layout: "stairs", name: "Tangga", slots: 3, desc: "menurun miring" },
+  { id: "stairs-4", layout: "stairs", name: "Tangga", slots: 4, desc: "tangga 4 foto" },
+  { id: "magazine-4", layout: "magazine", name: "Majalah", slots: 4, desc: "sampul + 3 kecil" },
+  { id: "magazine-7", layout: "magazine", name: "Majalah", slots: 7, desc: "sampul + 6 kecil" },
+  { id: "film-3", layout: "film", name: "Film Strip", slots: 3, desc: "roll film 3" },
+  { id: "film-4", layout: "film", name: "Film Strip", slots: 4, desc: "roll film 4" },
+  { id: "polaroid-2", layout: "polaroid", name: "Polaroid", slots: 2, desc: "2 kartu instan" },
+  { id: "polaroid-3", layout: "polaroid", name: "Polaroid", slots: 3, desc: "3 kartu instan" },
+];

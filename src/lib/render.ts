@@ -3,7 +3,8 @@ import { FrameDef, LayoutId, layoutGeometry } from "./data";
 export interface PlacedSticker { id: number; emoji: string; x: number; y: number; size: number }
 export interface Adjust { brightness: number; contrast: number; saturation: number }
 
-function loadImage(src: string): Promise<HTMLImageElement> {
+function loadImage(src: string | null): Promise<HTMLImageElement | null> {
+  if (!src) return Promise.resolve(null);
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
@@ -146,7 +147,7 @@ function photoCanvas(img: HTMLImageElement, w: number, h: number, filterId: stri
 }
 
 export async function renderFinal(opts: {
-  photos: string[];
+  photos: (string | null)[];
   layout: LayoutId;
   frame: FrameDef;
   filterId: string;
@@ -192,6 +193,44 @@ export async function renderFinal(opts: {
   }
 
   size.cells.forEach((p, i) => {
+    const img = imgs[i];
+    if (!img) {
+      if (p.card) {
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(p.card.x, p.card.y, p.card.w, p.card.h);
+        ctx.restore();
+      }
+      ctx.save();
+      ctx.fillStyle = "rgba(120,120,140,0.20)";
+      if (p.circle) {
+        ctx.beginPath();
+        ctx.arc(p.x + p.w / 2, p.y + p.h / 2, p.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+      }
+      ctx.strokeStyle = opts.frame.accent;
+      ctx.lineWidth = 5;
+      ctx.setLineDash([16, 12]);
+      if (p.circle) {
+        ctx.beginPath();
+        ctx.arc(p.x + p.w / 2, p.y + p.h / 2, p.w / 2 - 4, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        ctx.strokeRect(p.x + 4, p.y + 4, p.w - 8, p.h - 8);
+      }
+      ctx.setLineDash([]);
+      ctx.fillStyle = opts.frame.ink;
+      ctx.textAlign = "center";
+      ctx.font = "bold 64px sans-serif";
+      ctx.fillText("+", p.x + p.w / 2, p.y + p.h / 2 + 6);
+      ctx.font = "bold 30px sans-serif";
+      ctx.fillText(`SLOT ${i + 1}`, p.x + p.w / 2, p.y + p.h / 2 + 52);
+      ctx.restore();
+      return;
+    }
     if (p.card) {
       ctx.save();
       ctx.shadowColor = "rgba(0,0,0,0.3)"; ctx.shadowBlur = 20; ctx.shadowOffsetY = 8;
@@ -199,7 +238,7 @@ export async function renderFinal(opts: {
       ctx.fillRect(p.card.x, p.card.y, p.card.w, p.card.h);
       ctx.restore();
     }
-    const cell = photoCanvas(imgs[i], p.w, p.h, opts.filterId, opts.adjust);
+    const cell = photoCanvas(img, p.w, p.h, opts.filterId, opts.adjust);
     if (!p.card && !p.circle) {
       ctx.save();
       ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
