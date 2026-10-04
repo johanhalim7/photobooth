@@ -82,7 +82,7 @@ export const LAYOUTS: LayoutOption[] = [
   { id: "brick", name: "Susun Bata", desc: "Baris bergeser ala dinding bata", minPhotos: 3 },
   { id: "grid3", name: "Grid 3 Kolom", desc: "Kolase rapat 3 kolom", minPhotos: 3 },
   { id: "grid4", name: "Grid 4 Kolom", desc: "Kolase padat 4 kolom, cocok foto banyak", minPhotos: 4 },
-  { id: "duo", name: "Duo", desc: "2 foto tinggi berdampingan", minPhotos: 2 },
+  { id: "duo", name: "Duo", desc: "Kolom tinggi berpasangan", minPhotos: 2 },
   { id: "circles", name: "Bulat", desc: "Foto lingkaran ala avatar", minPhotos: 1 },
   { id: "stairs", name: "Tangga", desc: "Foto menurun bertangga miring", minPhotos: 2 },
   { id: "magazine", name: "Majalah", desc: "Sampul besar + strip kecil", minPhotos: 1 },
@@ -148,14 +148,26 @@ export function layoutGeometry(layout: LayoutId, count: number): { w: number; h:
   }
 
   if (layout === "poster" && n >= 2) {
-    const mainW = 600, mainH = 1000, sw = 400;
+    const mainW = 600, mainH = 1000;
     cells.push({ x: pad, y: header, w: mainW, h: mainH });
     const smallTotal = n - 1;
-    const sh = (mainH - gap * (smallTotal - 1)) / smallTotal;
-    for (let i = 0; i < smallTotal; i++) {
-      cells.push({ x: pad + mainW + gap, y: header + i * (sh + gap), w: sw, h: sh });
+    if (smallTotal <= 3) {
+      const sw = 400;
+      const sh = (mainH - gap * (smallTotal - 1)) / smallTotal;
+      for (let i = 0; i < smallTotal; i++) {
+        cells.push({ x: pad + mainW + gap, y: header + i * (sh + gap), w: sw, h: sh });
+      }
+      return { w: pad * 2 + mainW + gap + sw, h: header + mainH + footer + pad, cells };
     }
-    return { w: pad * 2 + mainW + gap + sw, h: header + mainH + footer + pad, cells };
+    // foto kecil banyak: susun grid 2 kolom di sisi kanan agar tidak gepeng
+    const sw = 290;
+    const rows = Math.ceil(smallTotal / 2);
+    const sh = (mainH - gap * (rows - 1)) / rows;
+    for (let i = 0; i < smallTotal; i++) {
+      const r = Math.floor(i / 2), c = i % 2;
+      cells.push({ x: pad + mainW + gap + c * (sw + gap), y: header + r * (sh + gap), w: sw, h: sh });
+    }
+    return { w: pad * 2 + mainW + gap + sw * 2 + gap, h: header + mainH + footer + pad, cells };
   }
 
   if (layout === "mosaic" && n >= 3) {
@@ -194,10 +206,10 @@ export function layoutGeometry(layout: LayoutId, count: number): { w: number; h:
   }
 
   if (layout === "duo") {
-    const m = Math.min(n, 2);
+    if (n > 2) return gridCells(2, 500, 650, n, true);
     const cw = 500, ch = 800;
-    for (let i = 0; i < m; i++) cells.push({ x: pad + i * (cw + gap), y: header, w: cw, h: ch });
-    return { w: pad * 2 + cw * m + gap * (m - 1), h: header + ch + footer + pad, cells };
+    for (let i = 0; i < n; i++) cells.push({ x: pad + i * (cw + gap), y: header, w: cw, h: ch });
+    return { w: pad * 2 + cw * n + gap * (n - 1), h: header + ch + footer + pad, cells };
   }
 
   if (layout === "circles") {
@@ -213,7 +225,7 @@ export function layoutGeometry(layout: LayoutId, count: number): { w: number; h:
   }
 
   if (layout === "stairs" && n >= 2) {
-    const cw = 500, ch = 625, dx = 150, dy = 130;
+    const cw = 500, ch = 625, dx = 280, dy = 320;
     for (let i = 0; i < n; i++) cells.push({ x: pad + i * dx, y: header + i * dy, w: cw, h: ch });
     return { w: pad * 2 + cw + dx * (n - 1), h: header + ch + dy * (n - 1) + footer + pad, cells };
   }
