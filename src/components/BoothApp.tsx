@@ -147,18 +147,18 @@ export default function BoothApp() {
     });
   };
 
-  const buildFinal = useCallback(async (withStickers: boolean) => {
+  const buildFinal = useCallback(async (withStickers: boolean, previewOnly = false) => {
     if (!photos.length) return "";
     return renderFinal({
       photos, layout, frame, filterId, adjust,
       stickers: withStickers ? stickers : [],
-      caption, watermark,
+      caption, watermark, previewOnly,
     });
   }, [photos, layout, frame, filterId, adjust, stickers, caption, watermark]);
 
   useEffect(() => {
     if (stage !== "editor" || !photos.length) return;
-    const t = setTimeout(() => { buildFinal(false).then(setPreview).catch(() => {}); }, 250);
+    const t = setTimeout(() => { buildFinal(false, true).then(setPreview).catch(() => {}); }, 250);
     return () => clearTimeout(t);
   }, [stage, buildFinal, photos.length]);
 

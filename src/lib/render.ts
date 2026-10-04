@@ -1,4 +1,4 @@
-import { FILTERS, FrameDef, LayoutId, layoutSize } from "./data";
+import { FrameDef, LayoutId, layoutSize } from "./data";
 
 export interface PlacedSticker { id: number; emoji: string; x: number; y: number; size: number }
 export interface Adjust { brightness: number; contrast: number; saturation: number }
@@ -22,8 +22,9 @@ function drawPattern(ctx: CanvasRenderingContext2D, frame: FrameDef, w: number, 
     }
   } else if (frame.pattern === "stripes") {
     ctx.lineWidth = 7;
+    ctx.strokeStyle = frame.accent;
     for (let x = -h; x < w; x += 36) {
-      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + h, h); ctx.strokeStyle = frame.accent; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + h, h); ctx.stroke();
     }
   } else if (frame.pattern === "stars" || frame.pattern === "confetti") {
     const glyph = frame.pattern === "stars" ? "★" : "•";
@@ -35,13 +36,97 @@ function drawPattern(ctx: CanvasRenderingContext2D, frame: FrameDef, w: number, 
   ctx.restore();
 }
 
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, x: number, y: number, w: number, h: number) {
+function clamp(v: number) { return v < 0 ? 0 : v > 255 ? 255 : v; }
+
+/**
+ * Terapkan filter preset + penyesuaian per-piksel.
+ * Sengaja TIDAK memakai ctx.filter karena tidak didukung semua browser
+ * (terutama Safari iOS) sehingga filter terlihat tidak berubah.
+ */
+function applyPixelFilter(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  filterId: string,
+  adjust: Adjust
+) {
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const d = imageData.data;
+  const bF = 1 + adjust.brightness / 100;
+  const cF = 1 + adjust.contrast / 100;
+  const sF = 1 + adjust.saturation / 100;
+
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], g = d[i + 1], b = d[i + 2];
+
+    switch (filterId) {
+      case "bw": {
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = g = b = gray;
+        break;
+      }
+      case "vintage": {
+        const nr = 0.393 * r + 0.769 * g + 0.189 * b;
+        const ng = 0.349 * r + 0.686 * g + 0.168 * b;
+        const nb = 0.272 * r + 0.534 * g + 0.131 * b;
+        r = nr * 0.95 + 12; g = ng * 0.95 + 6; b = nb * 0.9;
+        break;
+      }
+      case "warm":
+        r *= 1.14; g *= 1.03; b *= 0.82;
+        break;
+      case "cool":
+        r *= 0.88; g *= 1.0; b *= 1.16;
+        break;
+      case "soft":
+        r = r * 0.9 + 24; g = g * 0.9 + 24; b = b * 0.9 + 24;
+        break;
+      case "vivid": {
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = gray + (r - gray) * 1.55;
+        g = gray + (g - gray) * 1.55;
+        b = gray + (b - gray) * 1.55;
+        break;
+      }
+      case "pastel": {
+        const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+        r = (gray + (r - gray) * 0.7) * 1.06 + 10;
+        g = (gray + (g - gray) * 0.7) * 1.06 + 10;
+        b = (gray + (b - gray) * 0.7) * 1.06 + 10;
+        break;
+      }
+      default:
+        break;
+    }
+
+    r *= bF; g *= bF; b *= bF;
+    r = (r - 128) * cF + 128;
+    g = (g - 128) * cF + 128;
+    b = (b - 128) * cF + 128;
+    if (sF !== 1) {
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      r = gray + (r - gray) * sF;
+      g = gray + (g - gray) * sF;
+      b = gray + (b - gray) * sF;
+    }
+
+    d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b);
+  }
+  ctx.putImageData(imageData, 0, 0);
+}
+
+function photoCanvas(img: HTMLImageElement, w: number, h: number, filterId: string, adjust: Adjust): HTMLCanvasElement {
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  if (!ctx) return c;
   const scale = Math.max(w / img.naturalWidth, h / img.naturalHeight);
   const dw = img.naturalWidth * scale, dh = img.naturalHeight * scale;
-  ctx.save();
-  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
-  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
-  ctx.restore();
+  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  if (filterId !== "original" || adjust.brightness !== 0 || adjust.contrast !== 0 || adjust.saturation !== 0) {
+    applyPixelFilter(ctx, w, h, filterId, adjust);
+  }
+  return c;
 }
 
 export async function renderFinal(opts: {
@@ -53,25 +138,19 @@ export async function renderFinal(opts: {
   stickers: PlacedSticker[];
   caption: string;
   watermark: boolean;
+  previewOnly?: boolean;
 }): Promise<string> {
   const count = opts.photos.length;
   const size = layoutSize(opts.layout, count);
-  const SCALE = 2;
   const canvas = document.createElement("canvas");
-  canvas.width = size.w * SCALE / 2; // base 600px cell -> final strip ~ (size.w) px wide at 1x of layout units/ ?
-  canvas.width = size.w; // layout units already px at export scale below
+  canvas.width = size.w;
   canvas.height = size.h;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas tidak tersedia");
 
-  // background + pattern hanya di area non-foto (digambar penuh lalu foto menimpa tengah)
   ctx.fillStyle = opts.frame.bg;
   ctx.fillRect(0, 0, size.w, size.h);
   drawPattern(ctx, opts.frame, size.w, size.h);
-
-  const preset = FILTERS.find((f) => f.id === opts.filterId)?.css ?? "";
-  const adj = `brightness(${1 + opts.adjust.brightness / 100}) contrast(${1 + opts.adjust.contrast / 100}) saturate(${1 + opts.adjust.saturation / 100})`;
-  ctx.filter = `${preset} ${adj}`.trim() || "none";
 
   const imgs = await Promise.all(opts.photos.map(loadImage));
   const positions: { x: number; y: number }[] = [];
@@ -84,29 +163,32 @@ export async function renderFinal(opts: {
       positions.push({ x: size.pad, y: size.header + i * (size.cellH + size.gap) });
     }
   }
+
   positions.forEach((p, i) => {
+    const cell = photoCanvas(imgs[i], size.cellW, size.cellH, opts.filterId, opts.adjust);
     ctx.save();
     ctx.shadowColor = "rgba(0,0,0,0.25)"; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6;
     ctx.fillStyle = "#fff"; ctx.fillRect(p.x, p.y, size.cellW, size.cellH);
     ctx.restore();
-    drawCover(ctx, imgs[i], p.x, p.y, size.cellW, size.cellH);
+    ctx.drawImage(cell, p.x, p.y);
+    ctx.save();
+    ctx.strokeStyle = opts.frame.accent;
+    ctx.lineWidth = 10;
+    ctx.strokeRect(p.x + 5, p.y + 5, size.cellW - 10, size.cellH - 10);
+    ctx.restore();
   });
-  ctx.filter = "none";
 
-  // header brand
   ctx.fillStyle = opts.frame.ink;
   ctx.font = "700 30px system-ui, sans-serif";
   ctx.textAlign = "center";
   ctx.fillText("✦ PHOTOBOOTH ✦", size.w / 2, 46);
 
-  // stickers (posisi ternormalisasi terhadap kanvas final)
   for (const s of opts.stickers) {
     ctx.font = `${s.size}px sans-serif`;
     ctx.textAlign = "center"; ctx.textBaseline = "middle";
     ctx.fillText(s.emoji, s.x * size.w, s.y * size.h);
   }
 
-  // footer: caption + watermark
   const footerY = size.h - size.footer + 58;
   ctx.fillStyle = opts.frame.ink;
   if (opts.caption.trim()) {
@@ -125,7 +207,8 @@ export async function renderFinal(opts: {
     ctx.globalAlpha = 1;
   }
 
-  // upscale 2x untuk ketajaman unduhan
+  if (opts.previewOnly) return canvas.toDataURL("image/png");
+
   const out = document.createElement("canvas");
   out.width = canvas.width * 2; out.height = canvas.height * 2;
   const octx = out.getContext("2d");
