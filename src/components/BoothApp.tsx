@@ -38,6 +38,9 @@ export default function BoothApp() {
   const [displayCount, setDisplayCount] = useState<number | null>(null);
   const [flash, setFlash] = useState(false);
   const [shooting, setShooting] = useState(false);
+  const [target, setTarget] = useState(4);
+  const [shotNo, setShotNo] = useState(0);
+  const cancelRef = useRef(false);
 
   const [template, setTemplate] = useState<LayoutTemplate>(TEMPLATES.find((t) => t.id === "grid-4") ?? TEMPLATES[0]);
   const [assignments, setAssignments] = useState<(number | null)[]>([]);
@@ -164,17 +167,34 @@ export default function BoothApp() {
   };
 
   const doShoot = async () => {
-    if (shooting) return;
-    if (photos.length >= MAX_POOL) { setMsg(`Koleksi foto sudah penuh (maks ${MAX_POOL}). Hapus sebagian dulu ya.`); return; }
+    if (shooting) { cancelRef.current = true; return; }
+    if (photos.length >= target) { setMsg(""); setStage("templates"); return; }
+    cancelRef.current = false;
     setShooting(true);
-    await waitCountdown(countdownSec);
-    setFlash(true);
-    setTimeout(() => setFlash(false), 180);
-    const shot = snap();
+    let taken = photos.length;
+    while (taken < target && !cancelRef.current) {
+      setShotNo(taken + 1);
+      await waitCountdown(countdownSec);
+      if (cancelRef.current) break;
+      setFlash(true);
+      setTimeout(() => setFlash(false), 180);
+      const shot = snap();
+      if (!shot) {
+        setMsg("Gagal mengambil foto, coba lagi ya.");
+        break;
+      }
+      taken += 1;
+      setPhotos((prev) => [...prev, shot]);
+      if (taken < target && !cancelRef.current) {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
     setShooting(false);
-    if (!shot) { setMsg("Gagal mengambil foto, coba lagi ya."); return; }
-    setPhotos((prev) => [...prev, shot]);
-    setMsg("");
+    setShotNo(0);
+    if (!cancelRef.current && taken >= target) {
+      setMsg("");
+      setStage("templates");
+    }
   };
 
   const deletePhoto = (idx: number) => {
@@ -372,7 +392,7 @@ export default function BoothApp() {
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-8xl font-black">{displayCount}</div>
             )}
             <p className="absolute left-3 top-3 rounded-full bg-black/50 px-3 py-1 text-[11px]">
-              {shooting ? "Memotret…" : `${photos.length} foto terkumpul`}
+              {shooting ? `Foto ${shotNo} dari ${target}…` : `${photos.length}/${target} foto`}
             </p>
           </div>
           {camError && (
@@ -396,7 +416,13 @@ export default function BoothApp() {
             </div>
           )}
 
-          <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
+          <div className="mt-3 grid grid-cols-3 gap-3 text-xs">
+            <label className="rounded-2xl bg-zinc-900 p-3">
+              Target foto
+              <select value={target} onChange={(e) => setTarget(Number(e.target.value))} className="mt-2 w-full rounded-lg bg-zinc-800 px-2 py-2">
+                {Array.from({ length: 16 }, (_, i) => i + 1).map((n) => <option key={n} value={n}>{n} foto</option>)}
+              </select>
+            </label>
             <label className="rounded-2xl bg-zinc-900 p-3">
               Countdown
               <select value={countdownSec} onChange={(e) => setCountdownSec(Number(e.target.value))} className="mt-2 w-full rounded-lg bg-zinc-800 px-2 py-2">
@@ -413,17 +439,19 @@ export default function BoothApp() {
 
           <div className="mt-4 flex items-center justify-between gap-3">
             <button onClick={() => fileRef.current?.click()} className="rounded-full bg-zinc-800 px-4 py-3 text-xs font-semibold">Unggah Foto</button>
-            <button onClick={doShoot} disabled={shooting} className="h-16 w-16 rounded-full border-4 border-white bg-red-500 disabled:opacity-50" aria-label="Ambil foto" />
-            <span className="w-[92px] text-right text-[11px] text-zinc-500">Tap tombol merah tiap foto</span>
+            <button onClick={doShoot} className={`h-16 w-16 rounded-full border-4 border-white ${shooting ? "bg-zinc-600 text-lg" : "bg-red-500"}`} aria-label="Ambil foto">
+              {shooting ? "■" : ""}
+            </button>
+            <span className="w-[92px] text-right text-[11px] text-zinc-500">{shooting ? "Tap ■ untuk berhenti" : "Sekali tap, foto sampai target"}</span>
           </div>
 
           <button
             onClick={() => { if (photos.length) { setMsg(""); setStage("templates"); } else setMsg("Foto dulu minimal 1 ya."); }}
             className="mt-5 rounded-full bg-white py-4 text-sm font-black text-zinc-950 disabled:opacity-40"
           >
-            Selesai Foto · Pilih Template ({photos.length} foto)
+            {photos.length >= target ? `Target Tercapai · Pilih Template (${photos.length} foto)` : `Selesai Lebih Awal · Pilih Template (${photos.length} foto)`}
           </button>
-          <p className="mt-2 text-center text-[11px] text-zinc-500">Foto sepuasnya dulu — template & isinya dipilih setelah ini.</p>
+          <p className="mt-2 text-center text-[11px] text-zinc-500">Target tercapai = otomatis lanjut pilih template. Template & isinya tetap kamu pilih sendiri setelah ini.</p>
         </section>
       )}
 
